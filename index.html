@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dead Waves</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+canvas { display: block; }
+
+#ui {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; color: #fff;
+}
+
+#crosshair {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px; height: 20px;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(255,255,255,0.85);
+}
+#crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+#crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+
+#hud-bottom {
+  position: absolute; bottom: 20px; left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 0 30px;
+}
+
+#health-block { display: flex; flex-direction: column; gap: 4px; }
+#health-label { font-size: 11px; color: #aaa; letter-spacing: 2px; text-transform: uppercase; }
+#health-bar-wrap { width: 220px; height: 14px; background: rgba(0,0,0,0.6); border: 1px solid #444; }
+#health-bar { height: 100%; background: linear-gradient(90deg, #c0392b, #e74c3c); transition: width 0.2s; }
+
+#ammo-block { text-align: right; }
+#ammo-display { font-size: 36px; font-weight: bold; letter-spacing: -1px; color: #f0f0f0; }
+#ammo-reserve { font-size: 14px; color: #888; }
+#weapon-name { font-size: 12px; color: #f39c12; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+
+#wave-info {
+  position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+  text-align: center;
+}
+#wave-label { font-size: 13px; color: #e74c3c; letter-spacing: 4px; text-transform: uppercase; }
+#wave-num { font-size: 42px; font-weight: bold; color: #fff; line-height: 1; }
+
+#score-block { position: absolute; top: 20px; right: 30px; text-align: right; }
+#score-label { font-size: 11px; color: #aaa; letter-spacing: 2px; }
+#score-val { font-size: 28px; font-weight: bold; color: #f1c40f; }
+
+#cash-block { position: absolute; top: 20px; left: 30px; }
+#cash-label { font-size: 11px; color: #aaa; letter-spacing: 2px; }
+#cash-val { font-size: 24px; font-weight: bold; color: #2ecc71; }
+
+#kills-block { position: absolute; top: 70px; left: 30px; }
+#kills-label { font-size: 11px; color: #aaa; letter-spacing: 2px; }
+#kills-val { font-size: 18px; color: #fff; }
+
+#wave-announce {
+  position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.4s;
+}
+#wave-announce.show { opacity: 1; }
+#wave-announce h1 { font-size: 64px; color: #e74c3c; text-shadow: 0 0 30px #e74c3c; letter-spacing: 4px; }
+#wave-announce p { font-size: 20px; color: #aaa; margin-top: 8px; }
+
+#reload-indicator {
+  position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+  font-size: 14px; letter-spacing: 3px; color: #f39c12; text-transform: uppercase;
+  opacity: 0; transition: opacity 0.2s;
+}
+#reload-indicator.show { opacity: 1; }
+#reload-bar-wrap { width: 180px; height: 4px; background: rgba(255,255,255,0.1); margin-top: 6px; }
+#reload-bar { height: 100%; background: #f39c12; width: 0%; transition: none; }
+
+#damage-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(200,0,0,0.6) 100%);
+  opacity: 0; pointer-events: none; transition: opacity 0.1s;
+}
+
+/* SHOP */
+#shop-overlay {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.88); z-index: 100; pointer-events: all;
+  flex-direction: column; align-items: center; justify-content: center;
+}
+#shop-overlay.open { display: flex; }
+#shop-title { font-size: 48px; color: #f1c40f; letter-spacing: 6px; margin-bottom: 8px; }
+#shop-cash { font-size: 20px; color: #2ecc71; margin-bottom: 30px; }
+#shop-grid { display: grid; grid-template-columns: repeat(3, 260px); gap: 18px; margin-bottom: 30px; }
+.shop-item {
+  background: rgba(255,255,255,0.05); border: 1px solid #333;
+  padding: 20px; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+.shop-item:hover { border-color: #f1c40f; background: rgba(241,196,15,0.08); }
+.shop-item.owned { border-color: #2ecc71; }
+.shop-item.cant-afford { opacity: 0.45; cursor: not-allowed; }
+.shop-item h3 { font-size: 16px; color: #fff; margin-bottom: 6px; }
+.shop-item .item-desc { font-size: 12px; color: #888; margin-bottom: 10px; line-height: 1.5; }
+.shop-item .item-price { font-size: 18px; color: #f1c40f; font-weight: bold; }
+.shop-item .item-price.free { color: #2ecc71; }
+.shop-item .owned-tag { position: absolute; top: 10px; right: 10px; font-size: 10px; color: #2ecc71; letter-spacing: 1px; }
+#shop-close { font-size: 16px; color: #aaa; letter-spacing: 3px; cursor: pointer; padding: 10px 30px; border: 1px solid #444; transition: color 0.2s, border-color 0.2s; }
+#shop-close:hover { color: #fff; border-color: #fff; }
+#shop-hint { font-size: 12px; color: #555; margin-top: 14px; }
+
+/* MENU */
+#menu {
+  display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.95); z-index: 200;
+  flex-direction: column; align-items: center; justify-content: center;
+}
+#menu h1 { font-size: 72px; color: #e74c3c; letter-spacing: 8px; text-shadow: 0 0 40px #e74c3c; margin-bottom: 10px; }
+#menu .sub { font-size: 16px; color: #666; letter-spacing: 4px; margin-bottom: 50px; }
+#menu button {
+  font-family: 'Courier New', monospace; font-size: 18px; letter-spacing: 4px;
+  color: #fff; background: transparent; border: 1px solid #444;
+  padding: 14px 50px; cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+}
+#menu button:hover { border-color: #e74c3c; color: #e74c3c; box-shadow: 0 0 20px rgba(231,76,60,0.3); }
+#menu .controls { margin-top: 40px; color: #444; font-size: 12px; line-height: 2; text-align: center; }
+
+/* GAME OVER */
+#gameover {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.92); z-index: 200;
+  flex-direction: column; align-items: center; justify-content: center;
+}
+#gameover.show { display: flex; }
+#gameover h1 { font-size: 80px; color: #e74c3c; letter-spacing: 6px; margin-bottom: 20px; }
+#gameover .stats { color: #aaa; font-size: 18px; line-height: 2.2; text-align: center; margin-bottom: 40px; }
+#gameover .stats span { color: #fff; font-weight: bold; }
+#gameover button {
+  font-family: 'Courier New', monospace; font-size: 16px; letter-spacing: 4px;
+  color: #fff; background: transparent; border: 1px solid #444;
+  padding: 12px 40px; cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+}
+#gameover button:hover { border-color: #fff; }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="damage-overlay"></div>
+  <div id="crosshair"></div>
+
+  <div id="cash-block">
+    <div id="cash-label">CASH</div>
+    <div id="cash-val">$0</div>
+  </div>
+  <div id="kills-block">
+    <div id="kills-label">KILLS</div>
+    <div id="kills-val">0</div>
+  </div>
+
+  <div id="wave-info">
+    <div id="wave-label">WAVE</div>
+    <div id="wave-num">1</div>
+  </div>
+
+  <div id="score-block">
+    <div id="score-label">SCORE</div>
+    <div id="score-val">0</div>
+  </div>
+
+  <div id="hud-bottom">
+    <div id="health-block">
+      <div id="health-label">Health</div>
+      <div id="health-bar-wrap"><div id="health-bar" style="width:100%"></div></div>
+    </div>
+    <div id="ammo-block">
+      <div id="weapon-name">PISTOL</div>
+      <div id="ammo-display">12 / <span id="ammo-res">∞</span></div>
+    </div>
+  </div>
+
+  <div id="reload-indicator">
+    RELOADING
+    <div id="reload-bar-wrap"><div id="reload-bar"></div></div>
+  </div>
+
+  <div id="wave-announce">
+    <h1 id="wave-announce-text">WAVE 1</h1>
+    <p id="wave-announce-sub">Survive!</p>
+  </div>
+</div>
+
+<!-- SHOP -->
+<div id="shop-overlay">
+  <div id="shop-title">SHOP</div>
+  <div id="shop-cash">$0</div>
+  <div id="shop-grid"></div>
+  <div id="shop-close">CLOSE SHOP [B]</div>
+  <div id="shop-hint">Shop opens between waves automatically</div>
+</div>
+
+<!-- MENU -->
+<div id="menu">
+  <h1>DEAD WAVES</h1>
+  <div class="sub">ZOMBIE SURVIVAL SHOOTER</div>
+  <button id="start-btn">START GAME</button>
+  <div class="controls">
+    WASD — Move &nbsp;|&nbsp; Mouse — Aim &nbsp;|&nbsp; LMB — Shoot &nbsp;|&nbsp; R — Reload<br>
+    B — Shop &nbsp;|&nbsp; 1/2/3 — Switch Weapon &nbsp;|&nbsp; Shift — Sprint
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover">
+  <h1>YOU DIED</h1>
+  <div class="stats">
+    Wave reached: <span id="go-wave">1</span><br>
+    Zombies killed: <span id="go-kills">0</span><br>
+    Score: <span id="go-score">0</span>
+  </div>
+  <button id="restart-btn">PLAY AGAIN</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
