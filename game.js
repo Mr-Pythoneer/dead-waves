@@ -276,6 +276,7 @@ function spawnWave(w) {
         hitFlash: 0,
         legTime: Math.random() * Math.PI * 2,
         attackCooldown: 0,
+        flashing: false,
       });
     }, i * (Math.max(200, 1200 - w * 60)));
   }
@@ -835,9 +836,20 @@ function tick() {
     // hit flash
     if (z.hitFlash > 0) {
       z.hitFlash -= dt;
+      if (!z.flashing) {
+        z.flashing = true;
+        z.mesh.traverse(c => {
+          if (c.isMesh && c.material && c.material.color) {
+            c.material.userData.origColor = c.material.color.getHex();
+            c.material.color.set(0xffffff);
+          }
+        });
+      }
+    } else if (z.flashing) {
+      z.flashing = false;
       z.mesh.traverse(c => {
-        if (c.isMesh && c.material.color) {
-          c.material.color.set(z.hitFlash > 0 ? 0xffffff : undefined);
+        if (c.isMesh && c.material && c.material.color && c.material.userData.origColor !== undefined) {
+          c.material.color.set(c.material.userData.origColor);
         }
       });
     }
